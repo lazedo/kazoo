@@ -9,15 +9,13 @@
 %%%-------------------------------------------------------------------
 -module(whapps_maintenance).
 
--include_lib("whistle/include/wh_databases.hrl").
--include_lib("whistle/include/wh_log.hrl").
--include_lib("whistle/include/wh_types.hrl").
+-include("whistle_apps.hrl").
 
 -export([migrate/0]).
 -export([find_invalid_acccount_dbs/0]).
 -export([refresh/0, refresh/1]).
 -export([blocking_refresh/0]).
--export([purge_doc_type/2]).
+-export([purge_doc_type/2, purge_doc_type/3]).
 -export([cleanup_aggregated_account/1]).
 -export([migrate_limits/0, migrate_limits/1]).
 -export([migrate_media/0, migrate_media/1]).
@@ -77,8 +75,9 @@ migrate() ->
     WhappsUpdates = [fun(L) -> [<<"sysconf">> | lists:delete(<<"sysconf">>, L)] end
                      ,fun(L) -> [<<"acdc">> | lists:delete(<<"acdc">>, L)] end
                      ,fun(L) -> [<<"reorder">> | lists:delete(<<"reorder">>, L)] end
+                     ,fun(L) -> [<<"omnipresence">> | lists:delete(<<"omnipresence">>, L)] end
                     ],
-    StartWhapps = whapps_config:get(<<"whapps_controller">>, <<"whapps">>, []),
+    StartWhapps = whapps_config:get(<<"whapps_controller">>, <<"whapps">>, ?DEFAULT_WHAPPS),
     _ = whapps_config:set_default(<<"whapps_controller">>
                                   ,<<"whapps">>
                                   ,lists:foldr(fun(F, L) -> F(L) end, StartWhapps, WhappsUpdates)
@@ -326,23 +325,31 @@ cleanup_aggregated_device(Device) ->
                             {'ok', wh_json:objects()} |
                             {'error', term()} |
                             'ok'.
+-spec purge_doc_type(ne_binaries() | ne_binary(), ne_binary(), integer()) ->
+                            {'ok', wh_json:objects()} |
+                            {'error', term()} |
+                            'ok'.
 purge_doc_type([], _Account) -> 'ok';
 purge_doc_type([Type|Types], Account) ->
     _ = purge_doc_type(Type, Account),
-    purge_doc_type(Types, Account);
+    purge_doc_type(Types, Account, whapps_config:get_integer(<<"whistle_couch">>, <<"default_chunk_size">>, 1000));
 purge_doc_type(Type, Account) when not is_binary(Type) ->
-    purge_doc_type(wh_util:to_binary(Type), Account);
+    purge_doc_type(wh_util:to_binary(Type), Account, whapps_config:get_integer(<<"whistle_couch">>, <<"default_chunk_size">>, 1000));
 purge_doc_type(Type, Account) when not is_binary(Account) ->
-    purge_doc_type(Type, wh_util:to_binary(Account));
-purge_doc_type(Type, Account) ->
+    purge_doc_type(Type, wh_util:to_binary(Account), whapps_config:get_integer(<<"whistle_couch">>, <<"default_chunk_size">>, 1000)).
+purge_doc_type(Type, Account, ChunkSize) ->
     Db = wh_util:format_account_id(Account, 'encoded'),
     Opts = [{'key', Type}
-            ,'include_docs'
+           ,{'limit', ChunkSize}
+           ,'include_docs'
            ],
     case couch_mgr:get_results(Db, <<"maintenance/listing_by_type">>, Opts) of
         {'error', _}=E -> E;
+        {'ok', []} -> 'ok';
         {'ok', Ds} ->
-            couch_mgr:del_docs(Db, [wh_json:get_value(<<"doc">>, D) || D <- Ds])
+            lager:debug('deleting up to ~p documents of type ~p', [ChunkSize, Type]),
+            couch_mgr:del_docs(Db, [wh_json:get_value(<<"doc">>, D) || D <- Ds]),
+            purge_doc_type(Type, Account, ChunkSize)
     end.
 
 %%--------------------------------------------------------------------
