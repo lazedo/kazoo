@@ -400,6 +400,7 @@ release_job(Result, JObj) ->
                          case Retries - Attempts >= 1 of
                              _ when Success ->
                                  lager:debug("releasing job with status: completed"),
+                                 wh_json:set_value(<<"folder">>, <<"sent">>, J),
                                  wh_json:set_value(<<"pvt_job_status">>, <<"completed">>, J);
                              'true' ->
                                  lager:debug("releasing job with status: pending"),
@@ -553,6 +554,7 @@ send_fax(JobId, JObj, Q) ->
                ,{<<"To-DID">>, wnm_util:to_e164(wh_json:get_value(<<"to_number">>, JObj))}
                ,{<<"Fax-Identity-Number">>, wh_json:get_value(<<"fax_identity_number">>, JObj)}
                ,{<<"Fax-Identity-Name">>, wh_json:get_value(<<"fax_identity_name">>, JObj)}
+               ,{<<"Fax-Timezone">>, wh_json:get_value(<<"fax_timezone">>, JObj)}
                ,{<<"Flags">>, wh_json:get_value(<<"flags">>, JObj)}
                ,{<<"Resource-Type">>, <<"originate">>}
                ,{<<"Msg-ID">>, JobId}
