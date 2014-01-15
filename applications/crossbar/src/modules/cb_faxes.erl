@@ -34,8 +34,7 @@
 
 -define(ATTACHMENT, <<"attachment">>).
 
--define(CB_LIST, <<"media/listing_private_media">>).
--define(FAX_FILE_TYPE, <<"tiff">>).
+-define(CB_LIST, <<"faxes/list_by_account_folder">>).
 
 -define(UPLOAD_MIME_TYPES, [{<<"application">>, <<"json">>}
                            ,{<<"application">>, <<"pdf">>}
@@ -219,10 +218,10 @@ validate(#cb_context{req_verb = ?HTTP_PUT}=Context, ?OUTGOING) ->
 validate(#cb_context{req_verb = ?HTTP_PUT}=Context, ?BOXES) ->
     create_faxbox(Context#cb_context{db_name=?WH_FAXES});
 validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?INCOMING) ->
-    incoming_summary(Context).
+    incoming_summary(Context#cb_context{db_name=?WH_FAXES}).
 
 validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?INCOMING, Id) ->
-    read(Id, Context);
+    read(Id, Context#cb_context{db_name=?WH_FAXES});
 validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?OUTGOING, Id) ->
     read(Id, Context#cb_context{db_name=?WH_FAXES});
 validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, Id) ->
@@ -237,29 +236,29 @@ validate(#cb_context{req_verb = ?HTTP_DELETE}=Context, ?OUTGOING, Id) ->
     read(Id, Context#cb_context{db_name=?WH_FAXES}).
 
 validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?INCOMING, Id, ?ATTACHMENT) ->
-    load_fax_binary(Id, Context);
+    load_fax_binary(Id, Context#cb_context{db_name=?WH_FAXES});
 validate(#cb_context{req_verb = ?HTTP_PUT}=Context, ?BOXES, _BoxId, ?OUTBOX) ->
     create(Context#cb_context{db_name=?WH_FAXES});
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES,_BoxId, ?OUTBOX) ->
-    outgoing_summary(Context#cb_context{db_name=?WH_FAXES});
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?INBOX) ->
-    incoming_summary(Context);
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?SENT) ->
-    incoming_summary(Context).
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, BoxId, ?OUTBOX) ->
+    faxbox_folder_listing(BoxId, ?OUTBOX, Context#cb_context{db_name=?WH_FAXES});
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, BoxId, ?INBOX) ->
+    faxbox_folder_listing(BoxId, ?INBOX, Context#cb_context{db_name=?WH_FAXES});
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, BoxId, ?SENT) ->
+    faxbox_folder_listing(BoxId, ?SENT, Context#cb_context{db_name=?WH_FAXES}).
 
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES,_BoxId, ?OUTBOX, _FaxId) ->
-    outgoing_summary(Context#cb_context{db_name=?WH_FAXES});
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?INBOX, _FaxId) ->
-    incoming_summary(Context);
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?SENT, _FaxId) ->
-    incoming_summary(Context).
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, BoxId, ?OUTBOX, FaxId) ->
+    read(FaxId, Context#cb_context{db_name=?WH_FAXES});
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?INBOX, FaxId) ->
+    read(FaxId, Context#cb_context{db_name=?WH_FAXES});
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?SENT, FaxId) ->
+    read(FaxId, Context#cb_context{db_name=?WH_FAXES}).
 
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES,_BoxId, ?OUTBOX, _FaxId, ?ATTACHMENT) ->
-    outgoing_summary(Context#cb_context{db_name=?WH_FAXES});
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?INBOX, _FaxId, ?ATTACHMENT) ->
-    incoming_summary(Context);
-validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?SENT, _FaxId, ?ATTACHMENT) ->
-    incoming_summary(Context).
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES,_BoxId, ?OUTBOX, FaxId, ?ATTACHMENT) ->
+    load_fax_binary(FaxId, Context#cb_context{db_name=?WH_FAXES});
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?INBOX, FaxId, ?ATTACHMENT) ->
+    load_fax_binary(FaxId, Context#cb_context{db_name=?WH_FAXES});
+validate(#cb_context{req_verb = ?HTTP_GET}=Context, ?BOXES, _BoxId, ?SENT, FaxId, ?ATTACHMENT) ->
+    load_fax_binary(FaxId, Context#cb_context{db_name=?WH_FAXES}).
 
 
 %%--------------------------------------------------------------------
@@ -353,7 +352,6 @@ content_type_to_extension(<<"image/tiff">>) -> <<"tiff">>.
 put(#cb_context{}=Context) ->
     crossbar_doc:save(Context).
 put(#cb_context{}=Context, ?OUTGOING) ->
-	%lager:debug("conext ~p",[Context]),
     C = crossbar_doc:save(Context),
 	save_attachment(C);
 put(#cb_context{}=Context, ?BOXES) ->
@@ -490,6 +488,7 @@ on_successful_validation('undefined', #cb_context{doc=JObj
                                                }=Context) ->
     AccountDb = wh_util:format_account_id(AccountId, 'encoded'),
     Context#cb_context{doc=wh_json:set_values([{<<"pvt_type">>, <<"fax">>}
+											   ,{<<"folder">>, <<"outbox">>}
                                                ,{<<"pvt_job_status">>, <<"pending">>}
                                                ,{<<"attempts">>, 0}
                                                ,{<<"pvt_account_id">>, AccountId}
@@ -519,10 +518,10 @@ maybe_reset_job(Context) -> Context.
 %% @end
 %%--------------------------------------------------------------------
 -spec incoming_summary(cb_context:context()) -> cb_context:context().
-incoming_summary(#cb_context{}=Context) ->
+incoming_summary(#cb_context{account_id=AccountId}=Context) ->
     crossbar_doc:load_view(?CB_LIST
-                           ,[{'startkey', [?FAX_FILE_TYPE]}
-                             ,{'endkey', [?FAX_FILE_TYPE, wh_json:new()]}
+                           ,[{'startkey', [AccountId, ?INBOX]}
+                             ,{'endkey', [AccountId, ?INBOX, wh_json:new()]}
                              ,'include_docs'
                             ]
                            ,Context
@@ -565,10 +564,18 @@ load_fax_binary(FaxId, #cb_context{resp_headers=RespHeaders}=Context) ->
 %%--------------------------------------------------------------------
 -spec faxbox_listing(cb_context:context()) -> cb_context:context().
 faxbox_listing(#cb_context{account_id=AccountId}=Context) ->
-    ViewOptions=[{'key', AccountId}
-                 ,'include_docs'
-                ],
-    crossbar_doc:load_view(<<"faxboxes/crossbar_listing">>
+    ViewOptions=[{'key',AccountId},'include_docs' ],
+    crossbar_doc:load_view(<<"faxbox/crossbar_listing">>
+                           ,ViewOptions
+                           ,Context
+                           ,fun normalize_view_results/2
+                          ).
+
+
+-spec faxbox_folder_listing(ne_binary(), ne_binary(), cb_context:context()) -> cb_context:context().
+faxbox_folder_listing(BoxId, Folder, #cb_context{account_id=AccountId}=Context) ->
+    ViewOptions=[{'key', [BoxId,Folder]}],
+    crossbar_doc:load_view(<<"faxes/list_by_faxbox_folder">>
                            ,ViewOptions
                            ,Context
                            ,fun normalize_view_results/2
@@ -605,3 +612,12 @@ normalize_view_results(JObj, Acc) ->
 -spec normalize_incoming_view_results(wh_json:object(), wh_json:objects()) -> wh_json:objects().
 normalize_incoming_view_results(JObj, Acc) ->
     [wh_json:public_fields(wh_json:get_value(<<"doc">>, JObj))|Acc].
+
+is_faxbox_email_global_unique(Email, DeviceId) ->
+    ViewOptions = [{<<"key">>, wh_util:to_lower_binary(Email)}],
+    case couch_mgr:get_results(?WH_FAXES, <<"faxbox/email_address">>, ViewOptions) of
+        {'ok', []} -> 'true';
+        {'ok', [JObj]} -> wh_json:get_value(<<"id">>, JObj) =:= DeviceId;
+        {'error', 'not_found'} -> 'true';
+        _ -> 'false'
+    end.
