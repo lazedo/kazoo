@@ -218,7 +218,7 @@ save_fax_doc([Doc|Docs],FileContents,CT) ->
 check_faxbox(To, #state{from=From}=State) ->
 	[FaxNumber,FaxBoxId] = binary:split(wh_util:to_lower_binary(To),<<"@">>),
 	ViewOptions = [{<<"key">>, FaxBoxId},'include_docs'],
-    case couch_mgr:get_results(?WH_FAXES, <<"faxboxes/email_address">>, ViewOptions) of
+    case couch_mgr:get_results(?WH_FAXES, <<"faxbox/email_address">>, ViewOptions) of
         {'ok', []} -> {error, <<"Not Found">>, State};
         {'ok', [JObj]} -> check_faxbox_permissions(FaxNumber, wh_json:get_value(<<"doc">>,JObj), State );
         {'error', 'not_found'} -> {error, <<"Not Found">>, State};
@@ -240,11 +240,13 @@ add_fax_document(FaxNumber, FaxBoxDoc, #state{docs=Docs}=State) ->
             ,{<<"fax_identity_name">>, wh_json:get_value(<<"caller_name">>, FaxBoxDoc)}		
 			,{<<"from_number">>,wh_json:get_value(<<"caller_id">>,FaxBoxDoc)}
             ,{<<"fax_identity_number">>, wh_json:get_value(<<"caller_id">>, FaxBoxDoc)}
+            ,{<<"fax_timezone">>, wh_json:get_value(<<"timezone">>, FaxBoxDoc)}
 			,{<<"to_name">>,FaxNumber}
 			,{<<"to_number">>,FaxNumber}
 			,{<<"retries">>,wh_json:get_value(<<"retries">>,FaxBoxDoc,3)}
 			,{<<"notifications">>,wh_json:from_list([{<<"email">>,wh_json:from_list([{<<"send_to">>,wh_json:get_value(<<"email_to">>,FaxBoxDoc)}])}]) }
             ,{<<"faxbox_id">>, FaxBoxId}
+            ,{<<"folder">>, <<"outbox">>}
 			 ],
 	{ _ , JObj} = wh_json_validator:is_valid(wh_json:from_list(Props), <<"faxes">>),
 	Doc = wh_json:set_values([{<<"pvt_type">>, <<"fax">>}
