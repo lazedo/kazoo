@@ -210,7 +210,8 @@ refresh(?WH_PROVISIONER_DB) ->
     'ok';
 refresh(?WH_FAXES) ->
     couch_mgr:db_create(?WH_FAXES),
-    _ = couch_mgr:revise_doc_from_file(?WH_FAXES, 'whistle_apps', ?FAXES_VIEW_FILE),
+    % _ = couch_mgr:revise_doc_from_file(?WH_FAXES, 'whistle_apps', ?FAXES_VIEW_FILE),
+	_ = couch_mgr:revise_views_from_folder(?WH_FAXES, fax),
     'ok';
 refresh(?KZ_PORT_REQUESTS_DB) ->
     couch_mgr:db_create(?KZ_PORT_REQUESTS_DB),
