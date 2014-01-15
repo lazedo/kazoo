@@ -108,7 +108,7 @@ handle_cast(_Msg, State) ->
 handle_info('expire_jobs', State) ->
     MaxTime = whapps_config:get_integer(?CONFIG_CAT, <<"job_timeout">>, 900000),
     ViewOptions = [{<<"key">>, wh_util:to_binary(node())}],
-    case couch_mgr:get_results(?WH_FAXES, <<"faxes/processing_by_node">>, ViewOptions) of
+    case couch_mgr:get_results(?WH_FAXES, <<"jobs/processing_by_node">>, ViewOptions) of
         {'ok', JObjs} ->
             [begin
                  DocId = wh_json:get_value(<<"id">>, JObj),
@@ -127,7 +127,7 @@ handle_info('expire_jobs', State) ->
     {'noreply', State, ?POLLING_INTERVAL};
 handle_info('timeout', #state{jobs=[]}=State) ->
     ViewOptions = [{'limit', 100}],
-    case couch_mgr:get_results(?WH_FAXES, <<"faxes/jobs">>, ViewOptions) of
+    case couch_mgr:get_results(?WH_FAXES, <<"jobs/pending">>, ViewOptions) of
         {'ok', []} -> {'noreply', State, ?POLLING_INTERVAL};
         {'ok', Jobs} ->
             lager:debug("fetched ~b jobs, attempting to distribute to workers", [length(Jobs)]),
@@ -181,7 +181,7 @@ distribute_jobs([Job|Jobs]) ->
 -spec cleanup_jobs() -> 'ok'.
 cleanup_jobs() ->
     ViewOptions = [{<<"key">>, wh_util:to_binary(node())}],
-    case couch_mgr:get_results(?WH_FAXES, <<"faxes/processing_by_node">>, ViewOptions) of
+    case couch_mgr:get_results(?WH_FAXES, <<"jobs/processing_by_node">>, ViewOptions) of
         {'ok', JObjs} ->
             [begin
                  DocId = wh_json:get_value(<<"id">>, JObj),
