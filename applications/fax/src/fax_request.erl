@@ -32,8 +32,10 @@
           call :: whapps_call:call()
          ,action = 'receive' :: 'receive' | 'transmit'
          ,handler :: {pid(), reference()}
-         ,owner_id :: api_binary()
+         ,box_id :: api_binary()
          }).
+
+
 -type state() :: #state{}.
 
 %%%===================================================================
@@ -86,7 +88,7 @@ init([Call, JObj]) ->
     {'ok', #state{
        call = Call
        ,action = get_action(JObj)
-       ,owner_id = wh_json:get_value(<<"Owner-ID">>, JObj)
+       ,box_id = wh_json:get_value(<<"FaxBox-ID">>, JObj)
       }}.
 
 %%--------------------------------------------------------------------
@@ -118,9 +120,9 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast('start_action', #state{call=Call
                                    ,action='receive'
-                                   ,owner_id=OwnerId
+								   ,box_id=BoxId
                                   }=State) ->
-    {_Pid, _Ref}=Recv = spawn_monitor(?MODULE, 'receive_fax', [Call, OwnerId]),
+    {_Pid, _Ref}=Recv = spawn_monitor(?MODULE, 'receive_fax', [Call, BoxId]),
     lager:debug("receiving a fax in ~p(~p)", [_Pid, _Ref]),
     {'noreply', State#state{handler=Recv}};
 handle_cast(_Msg, State) ->
@@ -185,22 +187,35 @@ get_action(JObj) ->
     end.
 
 -spec receive_fax(whapps_call:call(), api_binary()) -> any().
-receive_fax(Call, OwnerId) ->
+receive_fax(Call, BoxId) ->
     whapps_call:put_callid(Call),
-
+	AccountId = whapps_call:account_id(Call),
+	ChannelVars = case couch_mgr:open_doc(?WH_FAXES, BoxId) of
+					  {'ok', FaxBoxDoc} -> [{<<"Fax-Identity-Number">>, 
+											 case wh_util:is_true(wh_json:get_value(<<"force_incoming_caller_id">>, FaxBoxDoc, 'false')) of 
+												 'false' -> wh_json:get_value(<<"caller_id">>, FaxBoxDoc);
+												 'true' -> whapps_call:to_user(Call)
+											 end												 
+											}
+										   ,{<<"Fax-Identity-Name">>, wh_json:get_value(<<"name">>, FaxBoxDoc)}
+										   ,{<<"Fax-Timezone">>, wh_json:get_value(<<"timezone">>, FaxBoxDoc)}
+											];
+					  Else -> []
+				  end,
+	whapps_call_command:set(ChannelVars, 'undefined', Call),
     whapps_call_command:answer(Call),
     case whapps_call_command:b_receive_fax(Call) of
         {'ok', RecvJObj} ->
             lager:debug("rxfax resp: ~p", [RecvJObj]),
             whapps_call_command:hangup(Call),
-            maybe_store_fax(Call, OwnerId, RecvJObj);
+            maybe_store_fax(Call, BoxId, RecvJObj);
         _Resp ->
             lager:debug("rxfax unhandled: ~p", [_Resp])
     end.
 
-maybe_store_fax(Call, OwnerId, RecvJObj) ->
+maybe_store_fax(Call, BoxId, RecvJObj) ->
     %% store Fax in DB
-    case store_fax(Call, OwnerId, RecvJObj) of
+    case store_fax(Call, BoxId, RecvJObj) of
         {'ok', FaxId} ->
             lager:debug("storing fax successfully into ~s", [FaxId]),
             wapi_notifications:publish_fax(
@@ -212,7 +227,7 @@ maybe_store_fax(Call, OwnerId, RecvJObj) ->
                      ,{<<"To-Realm">>, whapps_call:to_realm(Call)}
                      ,{<<"Account-DB">>, whapps_call:account_db(Call)}
                      ,{<<"Fax-ID">>, FaxId}
-                     ,{<<"Owner-ID">>, OwnerId}
+                     ,{<<"FaxBox-ID">>, BoxId}
                      ,{<<"Caller-ID-Number">>, whapps_call:caller_id_number(Call)}
                      ,{<<"Caller-ID-Name">>, whapps_call:caller_id_name(Call)}
                      ,{<<"Call-ID">>, whapps_call:call_id(Call)}
@@ -227,9 +242,9 @@ maybe_store_fax(Call, OwnerId, RecvJObj) ->
 fax_fields(JObj) ->
     [{K,V} || {<<"Fax-", _/binary>> = K, V} <- wh_json:to_proplist(JObj)].
 
-store_fax(Call, OwnerId, JObj) ->
+store_fax(Call, BoxId, JObj) ->
     FaxFile = tmp_file(),
-    FaxDocId = create_fax_doc(Call, OwnerId, JObj),
+    FaxDocId = create_fax_doc(Call, BoxId, JObj),
     FaxUrl = attachment_url(Call, FaxFile, FaxDocId),
 
     lager:debug("storing fax ~s to ~s", [FaxFile, FaxUrl]),
@@ -249,7 +264,7 @@ check_for_upload(Call, FaxDocId) ->
 check_for_upload(_Call, _FaxDocId, Retries) when Retries < 0 ->
     {'error', 'store_failed'};
 check_for_upload(Call, FaxDocId, Retries) ->
-    case couch_mgr:open_doc(whapps_call:account_db(Call), FaxDocId) of
+    case couch_mgr:open_doc(?WH_FAXES, FaxDocId) of
         {'ok', FaxDoc} ->
             check_upload_for_attachment(Call, FaxDocId, Retries, FaxDoc);
         {'error', _E} ->
@@ -284,7 +299,7 @@ check_attachment_for_data(Call, FaxDocId, Retries, FaxDoc, AttachmentName) ->
             {'ok', FaxDocId}
     end.
 
-create_fax_doc(Call, OwnerId, JObj) ->
+create_fax_doc(Call, BoxId, JObj) ->
     AccountDb = whapps_call:account_db(Call),
 
     {{Y,M,D}, {H,I,S}} = calendar:gregorian_seconds_to_datetime(wh_util:current_tstamp()),
@@ -296,12 +311,13 @@ create_fax_doc(Call, OwnerId, JObj) ->
                           ]),
 
     Props = [{<<"name">>, Name}
+             ,{<<"faxbox_id">>, BoxId}
+             ,{<<"folder">>, <<"inbox">>}
              ,{<<"to_number">>, whapps_call:request_user(Call)}
              ,{<<"from_number">>, whapps_call:from_user(Call)}
              ,{<<"description">>, <<"fax document received">>}
              ,{<<"source_type">>, <<"incoming_fax">>}
              ,{<<"timestamp">>, wh_json:get_value(<<"Timestamp">>, JObj)}
-             ,{<<"owner_id">>, OwnerId}
              ,{<<"media_type">>, <<"tiff">>}
              ,{<<"call_id">>, whapps_call:call_id(Call)}
              ,{<<"rx_results">>, wh_json:from_list(fax_util:fax_properties(JObj))}
@@ -310,27 +326,27 @@ create_fax_doc(Call, OwnerId, JObj) ->
 
     Doc = wh_doc:update_pvt_parameters(wh_json:from_list(Props)
                                        ,AccountDb
-                                       ,[{'type', <<"private_media">>}]
+                                       ,[{'type', <<"fax">>}]
                                       ),
 
-    {'ok', Doc1} = couch_mgr:save_doc(AccountDb, Doc),
+    {'ok', Doc1} = couch_mgr:save_doc(?WH_FAXES, Doc),
     wh_json:get_value(<<"_id">>, Doc1).
 
 attachment_url(Call, File, FaxDocId) ->
     AccountDb = whapps_call:account_db(Call),
-    _ = case couch_mgr:open_doc(AccountDb, FaxDocId) of
+    _ = case couch_mgr:open_doc(?WH_FAXES, FaxDocId) of
             {'ok', JObj} ->
                 case wh_json:get_keys(<<"_attachments">>, JObj) of
                     [] -> 'ok';
-                    Existing -> [couch_mgr:delete_attachment(AccountDb, FaxDocId, Attach) || Attach <- Existing]
+                    Existing -> [couch_mgr:delete_attachment(?WH_FAXES, FaxDocId, Attach) || Attach <- Existing]
                 end;
             {'error', _} -> 'ok'
         end,
-    Rev = case couch_mgr:lookup_doc_rev(AccountDb, FaxDocId) of
+    Rev = case couch_mgr:lookup_doc_rev(?WH_FAXES, FaxDocId) of
               {'ok', R} -> <<"?rev=", R/binary>>;
               _ -> <<>>
           end,
-    list_to_binary([wh_couch_connections:get_url(), AccountDb, "/", FaxDocId, "/", File, Rev]).
+    list_to_binary([wh_couch_connections:get_url(), ?WH_FAXES, "/", FaxDocId, "/", File, Rev]).
 
 -spec tmp_file() -> ne_binary().
 tmp_file() ->

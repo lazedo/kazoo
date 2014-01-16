@@ -400,6 +400,7 @@ release_job(Result, JObj) ->
                          case Retries - Attempts >= 1 of
                              _ when Success ->
                                  lager:debug("releasing job with status: completed"),
+                                 wh_json:set_value(<<"folder">>, <<"sent">>, J),
                                  wh_json:set_value(<<"pvt_job_status">>, <<"completed">>, J);
                              'true' ->
                                  lager:debug("releasing job with status: pending"),
@@ -442,6 +443,39 @@ execute_job(JObj, Q) ->
                             {'ok', string(), wh_proplist(), ne_binary()} |
                             {'error', term()}.
 fetch_document(JObj) ->
+	case wh_json:get_value(<<"_attachments">>, JObj, 'undefined') of
+		'undefined' -> fetch_document_from_url(JObj);
+		Attachments -> fetch_document_from_attachment(JObj)
+	end.
+
+
+-spec fetch_document_from_attachment(wh_json:object()) ->
+                            {'ok', string(), wh_proplist(), ne_binary()} |
+                            {'error', term()}.
+fetch_document_from_attachment(JObj) ->
+	lager:info("execute_job ~p",[JObj]),
+    JobId = wh_json:get_value(<<"_id">>, JObj),
+	Attachments = wh_json:get_value(<<"_attachments">>, JObj),
+	lager:info("execute_job_attachments ~p",[Attachments]),
+	Keys = wh_json:get_keys(Attachments),
+	lager:info("execute_job_keys ~p",[Keys]),
+	AttachmentName = lists:nth(1,Keys),	
+	lager:info("execute_job_attachment_key ~p",[AttachmentName]),
+	AttachmentDoc = wh_json:get_value(AttachmentName, Attachments),	
+	lager:info("execute_job_attachment ~p",[AttachmentDoc]),
+	CT = wh_json:get_value(<<"content_type">>, AttachmentDoc),
+	lager:info("execute_job_attachment_ct ~p",[CT]),
+	Props = [{"Content-Type",CT}],	
+	{'ok', Contents} = couch_mgr:fetch_attachment(?WH_FAXES,JobId,AttachmentName),
+	{'ok',"200",Props,Contents}.
+	
+	
+	
+-spec fetch_document_from_url(wh_json:object()) ->
+                            {'ok', string(), wh_proplist(), ne_binary()} |
+                            {'error', term()}.
+fetch_document_from_url(JObj) ->
+	
     FetchRequest = wh_json:get_value(<<"document">>, JObj),
     Url = wh_json:get_string_value(<<"url">>, FetchRequest),
     Method = wh_util:to_atom(wh_json:get_value(<<"method">>, FetchRequest, <<"get">>), 'true'),
@@ -477,13 +511,15 @@ prepare_contents(JobId, RespHeaders, RespContent) ->
             ConvertCmd = whapps_config:get_binary(<<"fax">>, <<"conversion_command">>, DefaultCmd),
             Cmd = io_lib:format(ConvertCmd, [OutputFile, InputFile]),
             lager:debug("attempting to convert pdf: ~s", [Cmd]),
-            case os:cmd(Cmd) of
+            Result = case os:cmd(Cmd) of
                 "success" ->
                     {'ok', OutputFile};
                 _Else ->
                     lager:debug("could not covert file: ~s", [_Else]),
                     {'error', <<"can not convert file, try uploading a tiff">>}
-            end;
+            end,
+			file:delete(InputFile),
+			Result;
         Else ->
             lager:debug("unsupported file type: ~p", [Else]),
             {'error', list_to_binary(["file type '", Else, "' is unsupported"])}
@@ -518,6 +554,7 @@ send_fax(JobId, JObj, Q) ->
                ,{<<"To-DID">>, wnm_util:to_e164(wh_json:get_value(<<"to_number">>, JObj))}
                ,{<<"Fax-Identity-Number">>, wh_json:get_value(<<"fax_identity_number">>, JObj)}
                ,{<<"Fax-Identity-Name">>, wh_json:get_value(<<"fax_identity_name">>, JObj)}
+               ,{<<"Fax-Timezone">>, wh_json:get_value(<<"fax_timezone">>, JObj)}
                ,{<<"Flags">>, wh_json:get_value(<<"flags">>, JObj)}
                ,{<<"Resource-Type">>, <<"originate">>}
                ,{<<"Msg-ID">>, JobId}

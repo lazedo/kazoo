@@ -38,10 +38,11 @@ handle_req(JObj, _Props) ->
 
     AcctDB = wh_json:get_value(<<"Account-DB">>, JObj),
     FaxId = wh_json:get_value(<<"Fax-ID">>, JObj),
+    FaxBoxId = wh_json:get_value(<<"FaxBox-ID">>, JObj),
 
     lager:debug("account-db: ~s, fax-id: ~s", [AcctDB, FaxId]),
 
-    {ok, FaxDoc} = couch_mgr:open_doc(AcctDB, FaxId),
+    {ok, FaxDoc} = couch_mgr:open_doc(?WH_FAXES, FaxId),
 
     OwnerId = case wh_json:get_value(<<"owner_id">>, FaxDoc) of
                   undefined -> wh_json:get_value(<<"Owner-ID">>, JObj);

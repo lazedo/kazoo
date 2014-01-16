@@ -95,6 +95,7 @@
 -define(FAX_HEADERS, [<<"From-User">>, <<"From-Realm">>
                       ,<<"To-User">>, <<"To-Realm">>
                       ,<<"Account-DB">>, <<"Fax-ID">>
+					  ,<<"FaxBox-ID">>
                      ]).
 -define(OPTIONAL_FAX_HEADERS, [<<"Caller-ID-Name">>, <<"Caller-ID-Number">>, <<"Call-ID">>
                                ,<<"Fax-Total-Pages">>, <<"Fax-Transferred-Pages">>
