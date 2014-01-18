@@ -19,7 +19,9 @@
 		from :: binary(),
 		docs = [] :: list(),
 		filename :: binary(),
-		content_type :: binary()
+		content_type :: binary(),
+		peer_ip :: tuple(),
+		proxy_ip :: tuple()
 	}).
 
 -type(error_message() :: {'error', string(), #state{}}).
@@ -42,7 +44,7 @@ init(Hostname, SessionCount, Address, Options) ->
 	case SessionCount > 20 of
 		false ->
 			Banner = [Hostname, " Kazoo Email to Fax Server"],
-			State = #state{options = Options},
+			State = #state{options = Options, peer_ip = Address},
 			{ok, Banner, State};
 		true ->
 			lager:info("Connection limit exceeded"),
@@ -159,9 +161,16 @@ handle_VRFY(_Address, State) ->
 	{error, "252 VRFY disabled by policy, just send some mail", State}.
 
 -spec handle_other(Verb :: binary(), Args :: binary(), #state{}) -> {string(), #state{}}.
+handle_other(<<"PROXY">>, Args, State) ->
+	{["WIP PROXY CMD"], State};
+%% TODO
+%% <<"PROXY">> / <<"TCP4 95.94.44.193 213.63.149.200 59640 25">>
+%% TRANSPORT PEER_IP PROXY_IP PEER_PORT PROXY_PORT
+
 handle_other(Verb, _Args, State) ->
 	% You can implement other SMTP verbs here, if you need to
 	{["500 Error: command not recognized : '", Verb, "'"], State}.
+
 
 %% this callback is OPTIONAL
 %% it only gets called if you add AUTH to your ESMTP extensions
