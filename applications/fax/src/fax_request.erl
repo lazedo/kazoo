@@ -309,6 +309,7 @@ create_fax_doc(Call, BoxId, JObj) ->
                            ," " , wh_util:to_binary(H), ":", wh_util:to_binary(I), ":", wh_util:to_binary(S)
                            ," UTC"
                           ]),
+    {ok, FaxBoxDoc} = couch_mgr:open_doc(?WH_FAXES, BoxId),
 
     Props = [{<<"name">>, Name}
              ,{<<"faxbox_id">>, BoxId}
@@ -317,6 +318,7 @@ create_fax_doc(Call, BoxId, JObj) ->
              ,{<<"from_number">>, whapps_call:from_user(Call)}
              ,{<<"description">>, <<"fax document received">>}
              ,{<<"source_type">>, <<"incoming_fax">>}
+			 ,{<<"notifications">>,wh_json:from_list([{<<"email">>,wh_json:from_list([{<<"send_to">>,wh_json:get_value(<<"email_to">>,FaxBoxDoc)}])}]) }
              ,{<<"timestamp">>, wh_json:get_value(<<"Timestamp">>, JObj)}
              ,{<<"media_type">>, <<"tiff">>}
              ,{<<"call_id">>, whapps_call:call_id(Call)}
