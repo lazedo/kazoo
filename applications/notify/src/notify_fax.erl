@@ -44,26 +44,15 @@ handle_req(JObj, _Props) ->
 
     {ok, FaxDoc} = couch_mgr:open_doc(?WH_FAXES, FaxId),
 
-    OwnerId = case wh_json:get_value(<<"owner_id">>, FaxDoc) of
-                  undefined -> wh_json:get_value(<<"Owner-ID">>, JObj);
-                  OID -> OID
-              end,
-    lager:debug("owner: ~s", [OwnerId]),
-
-    {ok, UserJObj} = couch_mgr:open_doc(AcctDB, OwnerId),
-    case {wh_json:get_ne_value(<<"email">>, UserJObj)
-          ,wh_json:is_true(<<"fax_to_email_enabled">>, UserJObj)
-         } of
-        {undefined, _} ->
-            lager:debug("no email found for user ~s", [wh_json:get_value(<<"username">>, UserJObj)]);
-        {_Email, false} ->
-            lager:debug("fax to email disabled for ~s", [_Email]);
-        {Email, true} ->
-            lager:debug("Fax->Email enabled for user, sending to ~s", [Email]),
+    case wh_json:get_value([<<"notifications">>,<<"email">>,<<"send_to">>], FaxDoc) of
+        'undefined' ->
+            lager:debug("no email found for notification");
+        To ->
+            lager:debug("Fax->Email enabled for user, sending to ~p", [To]),
             {ok, AcctObj} = couch_mgr:open_doc(?WH_ACCOUNTS_DB, wh_util:format_account_id(AcctDB, raw)),
-            Docs = [FaxDoc, UserJObj, AcctObj],
+            Docs = [FaxDoc, AcctObj],
 
-            Props = [{<<"email_address">>, Email}
+            Props = [{<<"email_address">>, To}
                      | create_template_props(JObj, Docs, AcctObj)
                     ],
 
@@ -76,7 +65,7 @@ handle_req(JObj, _Props) ->
             CustomSubjectTemplate = wh_json:get_value([<<"notifications">>, <<"fax_to_email">>, <<"email_subject_template">>], AcctObj),
             {ok, Subject} = notify_util:render_template(CustomSubjectTemplate, ?DEFAULT_SUBJ_TMPL, Props),
 
-            try build_and_send_email(TxtBody, HTMLBody, Subject, Email, props:filter_empty(Props)) of
+            try build_and_send_email(TxtBody, HTMLBody, Subject, To, props:filter_empty(Props)) of
                 _ -> lager:debug("built and sent")
             catch
                 C:R ->
@@ -140,7 +129,7 @@ build_and_send_email(TxtBody, HTMLBody, Subject, To, Props) when is_list(To) ->
     _ = [build_and_send_email(TxtBody, HTMLBody, Subject, T, Props) || T <- To];
 build_and_send_email(TxtBody, HTMLBody, Subject, To, Props) ->
     Service = props:get_value(<<"service">>, Props),
-    To = props:get_value(<<"email_address">>, Props),
+    %To = props:get_value(<<"email_address">>, Props),
 
     From = props:get_value(<<"send_from">>, Service),
 
@@ -214,9 +203,9 @@ raw_attachment_binary(Props) ->
     DB = props:get_value(<<"account_db">>, Props),
     Fax = props:get_value(<<"fax">>, Props),
     FaxId = props:get_value(<<"fax_id">>, Fax),
-    {ok, FaxJObj} = couch_mgr:open_doc(DB, FaxId),
+    {ok, FaxJObj} = couch_mgr:open_doc(?WH_FAXES, FaxId),
     [AttachmentId] = wh_json:get_keys(<<"_attachments">>, FaxJObj),
-    couch_mgr:fetch_attachment(DB, FaxId, AttachmentId).
+    couch_mgr:fetch_attachment(?WH_FAXES, FaxId, AttachmentId).
 
 %%--------------------------------------------------------------------
 %% @private

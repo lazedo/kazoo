@@ -400,8 +400,8 @@ release_job(Result, JObj) ->
                          case Retries - Attempts >= 1 of
                              _ when Success ->
                                  lager:debug("releasing job with status: completed"),
-                                 wh_json:set_value(<<"folder">>, <<"sent">>, J),
-                                 wh_json:set_value(<<"pvt_job_status">>, <<"completed">>, J);
+                                 J1 = wh_json:set_value(<<"folder">>, <<"sent">>, J),
+                                 wh_json:set_value(<<"pvt_job_status">>, <<"completed">>, J1);
                              'true' ->
                                  lager:debug("releasing job with status: pending"),
                                  wh_json:set_value(<<"pvt_job_status">>, <<"pending">>, J);
@@ -550,6 +550,8 @@ send_fax(JobId, JObj, Q) ->
     Request = props:filter_undefined([
                 {<<"Outbound-Caller-ID-Name">>, wh_json:get_value(<<"from_name">>, JObj)}
                ,{<<"Outbound-Caller-ID-Number">>, wh_json:get_value(<<"from_number">>, JObj)}
+               ,{<<"Outbound-Callee-ID-Number">>, wnm_util:to_e164(wh_json:get_value(<<"to_number">>, JObj))}
+               ,{<<"Outbound-Callee-ID-Name">>, wh_json:get_value(<<"to_name">>, JObj, wnm_util:to_e164(wh_json:get_value(<<"to_number">>, JObj)) )}
                ,{<<"Account-ID">>, wh_json:get_value(<<"pvt_account_id">>, JObj)}
                ,{<<"To-DID">>, wnm_util:to_e164(wh_json:get_value(<<"to_number">>, JObj))}
                ,{<<"Fax-Identity-Number">>, wh_json:get_value(<<"fax_identity_number">>, JObj)}
