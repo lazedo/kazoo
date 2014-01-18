@@ -202,7 +202,7 @@ receive_fax(Call, BoxId) ->
 											];
 					  Else -> []
 				  end,
-	whapps_call_command:set(ChannelVars, 'undefined', Call),
+	whapps_call_command:set(wh_json:from_list(ChannelVars), 'undefined', Call),
     whapps_call_command:answer(Call),
     case whapps_call_command:b_receive_fax(Call) of
         {'ok', RecvJObj} ->
