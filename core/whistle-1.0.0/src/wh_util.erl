@@ -32,7 +32,8 @@
         ]).
 -export([to_boolean/1, is_boolean/1
          ,is_true/1, is_false/1
-         ,is_empty/1, is_proplist/1
+         ,is_empty/1, is_not_empty/1
+         ,is_proplist/1
         ]).
 -export([to_lower_binary/1, to_upper_binary/1
          ,to_lower_string/1, to_upper_string/1
@@ -54,6 +55,7 @@
 -export([current_tstamp/0, ensure_started/1]).
 -export([gregorian_seconds_to_unix_seconds/1, unix_seconds_to_gregorian_seconds/1
          ,pretty_print_datetime/1
+         ,decr_timeout/2
         ]).
 -export([microseconds_to_seconds/1
          ,milliseconds_to_seconds/1
@@ -632,6 +634,9 @@ is_empty(MaybeJObj) ->
         'true' -> wh_json:is_empty(MaybeJObj)
     end.
 
+-spec is_not_empty(term()) -> boolean().
+is_not_empty(Term) -> (not is_empty(Term)).
+
 -spec is_proplist(any()) -> boolean().
 is_proplist(Term) when is_list(Term) ->
     lists:all(fun({_,_}) -> 'true'; (A) -> is_atom(A) end, Term);
@@ -784,6 +789,16 @@ pretty_print_datetime(Timestamp) when is_integer(Timestamp) ->
 pretty_print_datetime({{Y,Mo,D},{H,Mi,S}}) ->
     iolist_to_binary(io_lib:format("~4..0w-~2..0w-~2..0w_~2..0w-~2..0w-~2..0w",
                                    [Y, Mo, D, H, Mi, S])).
+
+-spec decr_timeout(wh_timeout(), non_neg_integer() | wh_now()) -> wh_timeout().
+decr_timeout('infinity', _) -> 'infinity';
+decr_timeout(Timeout, Elapsed) when is_integer(Elapsed) ->
+    Diff = Timeout - Elapsed,
+    case Diff < 0 of
+        'true' -> 0;
+        'false' -> Diff
+    end;
+decr_timeout(Timeout, Start) -> decr_timeout(Timeout, wh_util:elapsed_ms(Start)).
 
 -spec microseconds_to_seconds(float() | integer() | string() | binary()) -> non_neg_integer().
 microseconds_to_seconds(Microseconds) -> to_integer(Microseconds) div 1000000.

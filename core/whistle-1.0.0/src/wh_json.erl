@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @copyright (C) 2011-2013, 2600Hz
+%%% @copyright (C) 2011-2014, 2600Hz
 %%% @doc
 %%% proplists-like interface to json objects
 %%% @end
@@ -28,13 +28,21 @@
 -export([get_json_value/2, get_json_value/3]).
 -export([is_true/2, is_true/3, is_false/2, is_false/3, is_empty/1]).
 
--export([filter/2, filter/3, map/2, foldl/3, find/2, find/3, foreach/2]).
+-export([filter/2, filter/3
+         ,map/2
+         ,foldl/3
+         ,find/2, find/3
+         ,foreach/2
+        ]).
 -export([get_ne_value/2, get_ne_value/3]).
 -export([get_value/2, get_value/3, get_values/1]).
 -export([get_keys/1, get_keys/2]).
 -export([set_value/3, set_values/2, new/0]).
 -export([delete_key/2, delete_key/3, delete_keys/2]).
--export([merge_recursive/2]).
+-export([merge_recursive/1
+         ,merge_recursive/2
+         ,merge_recursive/3
+        ]).
 
 -export([from_list/1, merge_jobjs/2]).
 
@@ -180,21 +188,40 @@ merge_jobjs(?JSON_WRAPPER(Props1)=_JObj1, ?JSON_WRAPPER(_)=JObj2) ->
                         set_value(K, V, JObj2Acc)
                 end, JObj2, Props1).
 
-%% inserts values from JObj2 into JObj1
--spec merge_recursive(object(), object()) -> object().
--spec merge_recursive(object(), object() | json_term(), json_strings()) -> object().
+-type merge_pred() :: fun(({json_term(), json_term()}) -> boolean()).
+
+-spec merge_recursive(objects()) -> object().
+merge_recursive(JObjs) ->
+    merge_recursive(JObjs, fun(_, _) -> 'true' end).
+
+-spec merge_recursive(objects(), merge_pred()) -> object();
+                     (object(), object()) -> object().
+merge_recursive([J|JObjs], Pred) when is_function(Pred, 2) ->
+    lists:foldl(fun(JObj2, JObj1) ->
+                        merge_recursive(JObj1, JObj2, Pred)
+                end, J, JObjs);
 merge_recursive(JObj1, JObj2) ->
-    merge_recursive(JObj1, JObj2, []).
+    merge_recursive(JObj1, JObj2, fun(_, _) -> 'true' end).
 
-merge_recursive(JObj1, ?JSON_WRAPPER(Prop2), Keys) ->
+-spec merge_recursive(object(), object(), merge_pred()) -> object().
+merge_recursive(JObj1, JObj2, Pred) ->
+    merge_recursive(JObj1, JObj2, Pred, []).
+
+%% inserts values from JObj2 into JObj1
+-spec merge_recursive(object(), object() | json_term(), merge_pred(), json_strings()) -> object().
+merge_recursive(JObj1, ?JSON_WRAPPER(Prop2), Pred, Keys) ->
     lists:foldr(fun(Key, J) ->
-                        merge_recursive(J, props:get_value(Key, Prop2), [Key|Keys])
+                        merge_recursive(J, props:get_value(Key, Prop2), Pred, [Key|Keys])
                 end, JObj1, props:get_keys(Prop2));
-merge_recursive(JObj1, Value, Keys) ->
-    set_value(lists:reverse(Keys), Value, JObj1).
+merge_recursive(JObj1, Value, Pred, Keys) ->
+    Syek = lists:reverse(Keys),
+    case Pred(get_value(Syek, JObj1), Value) of
+        'false' -> JObj1;
+        'true' -> set_value(Syek, Value, JObj1)
+    end.
 
--spec to_proplist(object() | objects()) -> json_proplist() | [json_proplist(),...].
--spec to_proplist(key(), object() | objects()) -> json_proplist() | [json_proplist(),...].
+-spec to_proplist(object() | objects()) -> json_proplist() | json_proplists().
+-spec to_proplist(key(), object() | objects()) -> json_proplist() | json_proplists().
 %% Convert a json object to a proplist
 %% only top-level conversion is supported
 to_proplist(JObjs) when is_list(JObjs) -> [to_proplist(JObj) || JObj <- JObjs];
@@ -203,7 +230,7 @@ to_proplist(?JSON_WRAPPER(Prop)) -> Prop.
 %% convert everything starting at a specific key
 to_proplist(Key, JObj) -> to_proplist(get_json_value(Key, JObj, new())).
 
--spec recursive_to_proplist(object() | proplist()) -> proplist().
+-spec recursive_to_proplist(object() | wh_proplist()) -> wh_proplist().
 recursive_to_proplist(?JSON_WRAPPER(Props)) ->
     [{K, recursive_to_proplist(V)} || {K, V} <- Props];
 recursive_to_proplist(Props) when is_list(Props) ->
