@@ -169,7 +169,7 @@ handle_VRFY(_Address, State) ->
 -spec handle_other(Verb :: binary(), Args :: binary(), #state{}) -> {string(), #state{}}.
 handle_other(<<"PROXY">>, Args, State) ->
     lager:info("PROXY : ~p",[Args]),
-	{"250 Ok", State};
+	{State};
 %% TODO
 %% <<"PROXY">> / <<"TCP4 95.94.44.193 213.63.149.200 59640 25">>
 %% TRANSPORT PEER_IP PROXY_IP PEER_PORT PROXY_PORT
