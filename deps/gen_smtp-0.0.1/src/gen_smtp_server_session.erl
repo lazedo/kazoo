@@ -614,8 +614,11 @@ handle_request({<<"STARTTLS">>, _Args}, #state{socket = Socket} = State) ->
 	socket:send(Socket, "501 Syntax error (no parameters allowed)\r\n"),
 	{ok, State};
 handle_request({Verb, Args}, #state{socket = Socket, module = Module, callbackstate = OldCallbackState} = State) ->
-	{Message, CallbackState} = Module:handle_other(Verb, Args, OldCallbackState),
-	socket:send(Socket, [Message, "\r\n"]),
+	case Module:handle_other(Verb, Args, OldCallbackState) of
+		{Message, CallbackState} ->
+			socket:send(Socket, [Message, "\r\n"]);
+		{CallbackState} -> ok
+	end,
 	{ok, State#state{callbackstate = CallbackState}}.
 
 -spec(parse_encoded_address/1 :: (Address :: binary()) -> {binary(), binary()} | 'error').

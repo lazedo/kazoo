@@ -123,16 +123,20 @@ handle_RCPT_extension(Extension, _State) ->
 	error.
 
 -spec handle_DATA(From :: binary(), To :: [binary(),...], Data :: binary(), State :: #state{}) -> {'ok', string(), #state{}} | {'error', string(), #state{}}.
-handle_DATA(_From, _To, <<>>, State) ->
+handle_DATA(From, To, <<>>, State) ->
+	lager:info("552 Message too small. From ~p to ~p", [From,To]),
 	{error, "552 Message too small", State};
 handle_DATA(From, To, Data, State) ->
 	% some kind of unique id
+	lager:info("Handle Data From ~p to ~p", [From,To]),
 	Reference = lists:flatten([io_lib:format("~2.16.0b", [X]) || <<X>> <= erlang:md5(term_to_binary(erlang:now()))]),
 	Result = try mimemail:decode(Data) of
 		{Type,SubType,Headers,Parameters,Body} ->
 			lager:info("Message decoded successfully!~n"),
 			{ProcessResult, NewState} = process_message(Type,SubType,Headers,Parameters,Body,State),
-			{ProcessResult, Reference, NewState}
+			{ProcessResult, Reference, NewState};
+		Other -> lager:info("mime decode other ~p",[Other]),
+	 			{error, <<"Message decode failed">>, State}
 	catch
 		What:Why ->
 			lager:info("Message decode FAILED with ~p:~p", [What, Why]),
@@ -153,22 +157,26 @@ handle_DATA(From, To, Data, State) ->
 
 -spec handle_RSET(State :: #state{}) -> #state{}.
 handle_RSET(State) ->
+    lager:info("RSET Called"),
 	% reset any relevant internal state
 	State.
 
 -spec handle_VRFY(Address :: binary(), State :: #state{}) -> {'ok', string(), #state{}} | {'error', string(), #state{}}.
 handle_VRFY(_Address, State) ->
+    lager:info("252 VRFY disabled by policy, just send some mail"),
 	{error, "252 VRFY disabled by policy, just send some mail", State}.
 
 -spec handle_other(Verb :: binary(), Args :: binary(), #state{}) -> {string(), #state{}}.
 handle_other(<<"PROXY">>, Args, State) ->
-	{["WIP PROXY CMD"], State};
+    lager:info("PROXY : ~p",[Args]),
+	{"250 Ok", State};
 %% TODO
 %% <<"PROXY">> / <<"TCP4 95.94.44.193 213.63.149.200 59640 25">>
 %% TRANSPORT PEER_IP PROXY_IP PEER_PORT PROXY_PORT
 
-handle_other(Verb, _Args, State) ->
+handle_other(Verb, Args, State) ->
 	% You can implement other SMTP verbs here, if you need to
+    lager:info("500 Error: command not recognized : ~p / ~p",[Verb,Args]),
 	{["500 Error: command not recognized : '", Verb, "'"], State}.
 
 
