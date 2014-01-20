@@ -27,6 +27,7 @@
         ,[<<"Timeout">>
               ,<<"Ignore-Early-Media">>, <<"Flags">>, <<"Media">>
               ,<<"Outbound-Caller-ID-Name">>, <<"Outbound-Caller-ID-Number">>
+              ,<<"Outbound-Callee-ID-Name">>, <<"Outbound-Callee-ID-Number">>
               ,<<"Emergency-Caller-ID-Name">>, <<"Emergency-Caller-ID-Number">>
               ,<<"Ringback">>, <<"SIP-Headers">>, <<"Custom-Channel-Vars">>
               ,<<"Hold-Media">>, <<"Presence-ID">>, <<"Account-Realm">>

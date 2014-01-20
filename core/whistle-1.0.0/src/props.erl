@@ -285,3 +285,11 @@ to_querystring_test() ->
                   end, Tests).
 
 -endif.
+
+-spec to_log(wh_proplist()) -> 'ok'.
+to_log(Props) ->
+  Keys = props:get_keys(Props),
+  lager:info("===== Start Props =="),
+  lists:foreach(fun(A) -> lager:info("~p = ~p",[A,props:get_value(A,Props)]) end,Keys),
+  lager:info("===== End Props =="),
+  'ok'.

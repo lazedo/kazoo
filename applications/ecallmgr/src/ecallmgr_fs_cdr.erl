@@ -35,10 +35,10 @@
                             ,{<<"variable_sip_local_sdp_str">>, <<"Local-SDP">>}
                             ,{<<"variable_sip_to_uri">>, <<"To-Uri">>}
                             ,{<<"variable_sip_from_uri">>, <<"From-Uri">>}
-                            ,{[<<"variable_effective_caller_id_number">>, <<"Caller-Caller-ID-Number">>], <<"Caller-ID-Number">>}
-                            ,{[<<"variable_effective_caller_id_name">>, <<"Caller-Caller-ID-Name">>], <<"Caller-ID-Name">>}
-                            ,{<<"Caller-Callee-ID-Name">>, <<"Callee-ID-Name">>}
-                            ,{<<"Caller-Callee-ID-Number">>, <<"Callee-ID-Number">>}
+                            ,{[<<"variable_effective_caller_id_number">>, <<"variable_origination_caller_id_number">>, <<"Caller-Caller-ID-Number">>], <<"Caller-ID-Number">>}
+                            ,{[<<"variable_effective_caller_id_name">>, <<"variable_origination_caller_id_name">>, <<"Caller-Caller-ID-Name">>], <<"Caller-ID-Name">>}
+                            ,{[<<"variable_effective_callee_id_number">>, <<"variable_origination_callee_id_number">>, <<"Caller-Callee-ID-Number">>], <<"Callee-ID-Number">>}
+                            ,{[<<"variable_effective_callee_id_name">>, <<"variable_origination_callee_id_name">>, <<"Caller-Callee-ID-Name">>], <<"Callee-ID-Name">>}
                             ,{<<"Other-Leg-Unique-ID">>, <<"Other-Leg-Call-ID">>}
                             ,{<<"variable_sip_user_agent">>, <<"User-Agent">>}
                             ,{<<"variable_duration">>, <<"Duration-Seconds">>}
